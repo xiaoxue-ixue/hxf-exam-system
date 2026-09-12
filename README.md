@@ -6,9 +6,9 @@
 
 | 层 | 选型 |
 |---|---|
-| 框架 | Spring Boot 4.1.1 |
+| 框架 | Spring Boot 3.2.5 |
 | JDK | Java 17 |
-| 持久层 | MyBatis-Plus 3.5.17（`mybatis-plus-spring-boot4-starter`） |
+| 持久层 | MyBatis-Plus 3.5.7（`mybatis-plus-spring-boot3-starter`） |
 | 数据库 | MySQL 8.x |
 | 构建 | Maven（含 wrapper） |
 | 工具 | Lombok |

@@ -11,7 +11,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 冒烟测试：验证 MyBatis-Plus 在 Spring Boot 4 下自动配置是否真正生效。
+ * 冒烟测试：验证 MyBatis-Plus 在 Spring Boot 3 下自动配置是否真正生效。
  * 三项都要过：数据源能连、Mapper 能被扫到、@TableLogic 生效。
  */
 @SpringBootTest
