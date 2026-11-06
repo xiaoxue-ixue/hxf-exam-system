@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: exam-backend
+  servlet:
+    multipart:
+      # 上传文件大小限制（默认 1MB，题库 Excel 可能超过，故调大到 10MB）
+      max-file-size: 10MB
+      max-request-size: 10MB
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     # allowPublicKeyRetrieval=true：MySQL 8 默认 caching_sha2_password 认证，

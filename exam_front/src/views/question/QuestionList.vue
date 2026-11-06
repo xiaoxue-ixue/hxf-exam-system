@@ -38,6 +38,9 @@
     <el-card>
       <div class="toolbar">
         <el-button type="primary" @click="openDialog()">新增题目</el-button>
+        <el-button type="success" @click="openImportDialog">批量导入</el-button>
+        <el-button @click="handleDownloadTemplate">下载模板</el-button>
+        <el-button @click="handleExport">导出</el-button>
       </div>
       <el-table :data="list" v-loading="loading" border>
         <el-table-column prop="id" label="ID" width="60" />
@@ -187,13 +190,48 @@
         </template>
       </template>
     </el-dialog>
+
+    <!-- 批量导入对话框 -->
+    <el-dialog v-model="importVisible" title="批量导入题目" width="520px">
+      <div class="import-tip">
+        <p>1. 点击下方「下载模板」，按模板格式填写题目；</p>
+        <p>2. 选择题填写选项 A~D，判断/填空/简答留空选项；</p>
+        <p>3. 上传填好的 Excel 文件开始导入。</p>
+      </div>
+      <div class="import-actions">
+        <el-button @click="handleDownloadTemplate">下载模板</el-button>
+      </div>
+      <el-upload
+          ref="uploadRef"
+          drag
+          :auto-upload="false"
+          :limit="1"
+          accept=".xlsx,.xls"
+          :on-change="onFileChange"
+          :on-exceed="onFileExceed"
+          :on-remove="onFileRemove"
+          style="margin-top: 8px"
+      >
+        <div class="el-upload__text">将文件拖到此处，或 <em>点击选择文件</em></div>
+        <template #tip>
+          <div class="el-upload__tip">仅支持 .xlsx / .xls 文件</div>
+        </template>
+      </el-upload>
+      <template #footer>
+        <el-button @click="importVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="handleImport">开始导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { listCategoryTree, pageQuestions, addQuestion, updateQuestion, deleteQuestion } from '../../api/question'
+import { ref, reactive, computed, onMounted, h } from 'vue'
+import { ElMessage, ElMessageBox, genFileId } from 'element-plus'
+import {
+  listCategoryTree, pageQuestions, addQuestion, updateQuestion, deleteQuestion,
+  importQuestions, exportQuestions, downloadTemplate,
+} from '../../api/question'
 
 // 题型：后端以整数存储并返回（QuestionVO.type），前端表单使用字符串枚举
 const TYPE_INT_TO_STR = { 1: 'SINGLE', 2: 'MULTI', 3: 'JUDGE', 4: 'FILL', 5: 'SHORT' }
@@ -225,6 +263,12 @@ const judgeAnswer = ref('A')
 const fillAnswers = ref([''])
 const isChoiceType = computed(() => form.type === 'SINGLE' || form.type === 'MULTI')
 const filledOptions = computed(() => optionList.value.filter(o => o.text))
+
+// 批量导入
+const importVisible = ref(false)   // 对话框是否显示
+const importFile = ref(null)       // 当前选中的文件（真正的 File 对象）
+const importing = ref(false)       // 是否正在导入（控制按钮 loading）
+const uploadRef = ref(null)        // el-upload 组件实例
 
 // 预览
 const previewVisible = ref(false)
@@ -359,6 +403,78 @@ async function handleDelete(row) {
   loadData()
 }
 
+// ================= 批量导入 / 导出 =================
+
+function openImportDialog() {
+  importFile.value = null
+  // 弹窗关闭后 el-upload 的已选文件不会自动消失（el-dialog 不销毁内容），
+  // 不清掉会出现「界面显示着文件、状态里却是空」的矛盾，一点「开始导入」就报"请先选择文件"
+  uploadRef.value?.clearFiles()
+  importVisible.value = true
+}
+
+function onFileChange(file) {
+  // on-change 给的是 el-upload 的包装对象，真正的文件在 .raw 上
+  importFile.value = file.raw
+}
+
+function onFileRemove() {
+  importFile.value = null
+}
+
+function onFileExceed(files) {
+  // limit=1 时「再选一个文件」会走到这里：先清空已选，再把新选的放上去，
+  // 否则列表里显示的还是旧文件名，而 importFile 已经是新文件
+  uploadRef.value?.clearFiles()
+  const file = files[0]
+  file.uid = genFileId()      // 用户选出的 File 没有 uid，不补删除操作会删错对象
+  importFile.value = file
+  uploadRef.value?.handleStart(file)
+}
+
+async function handleImport() {
+  if (!importFile.value) { ElMessage.warning('请先选择要导入的文件'); return }
+  importing.value = true
+  try {
+    const result = await importQuestions(importFile.value)
+    const { successCount, failCount, errors } = result
+    // ElMessageBox 在 element-plus 2.14 里把字符串消息当 textContent 塞进 <p>，
+    // 且 el-message-box.css 没有 white-space: pre-wrap，用 '\n' 会被折叠成一行；
+    // 传 VNode 才能一行一条（用 h() 而非拼 HTML，顺带避开题干里的字符造成的注入风险）
+    const lines = [h('p', `导入完成：成功 ${successCount} 条，失败 ${failCount} 条`)]
+    if (failCount > 0 && errors?.length) {
+      lines.push(h('p', ''))   // 空行：把汇总和逐行明细隔开
+      errors.forEach(e => lines.push(h('p', `第 ${e.row} 行：${e.reason}`)))
+    }
+    // 点右上角 X 关闭会让 alert 的 Promise reject('cancel')，不接住就会跳过下面的刷新，
+    // 出现「导入已成功、列表却没更新、上传框还开着」的假故障；.catch 表示「关掉＝已阅」，
+    // 真正的业务失败仍由外层 try 中断（弹窗和文件保留，用户可直接重试）
+    await ElMessageBox.alert(h('div', lines), '导入结果').catch(() => {})
+    // 这两行必须在 await 之后、try 的正常流程里：
+    // 业务失败时异常中断，弹窗与文件都保留，用户可直接重试
+    importVisible.value = false
+    loadData()
+  } finally {
+    importing.value = false   // 只有解除 loading 放 finally，关弹窗不放
+  }
+}
+
+async function handleDownloadTemplate() {
+  await downloadTemplate()
+  ElMessage.success('模板已下载')
+}
+
+async function handleExport() {
+  const params = {
+    type: query.type,
+    categoryId: query.categoryId,
+    difficulty: query.difficulty,
+    keyword: query.keyword,
+  }
+  await exportQuestions(params)
+  ElMessage.success('导出成功')
+}
+
 onMounted(() => { loadData(); loadCategories() })
 </script>
 
@@ -369,4 +485,6 @@ onMounted(() => { loadData(); loadCategories() })
 .option-row { display: flex; align-items: center; margin-bottom: 8px; width: 100%; }
 .option-label { width: 30px; font-weight: bold; }
 .fill-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; width: 100%; }
+.import-tip { line-height: 1.8; color: #666; }
+.import-actions { margin-bottom: 4px; }
 </style>

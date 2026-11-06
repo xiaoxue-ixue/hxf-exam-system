@@ -61,6 +61,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- EasyExcel：题库批量导入导出（基于 POI，封装了繁琐的 Excel 读写 API） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>3.3.4</version>
+        </dependency>
+
         <!-- Spring Security -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
