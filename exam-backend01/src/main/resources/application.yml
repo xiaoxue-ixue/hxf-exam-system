@@ -6,7 +6,9 @@ spring:
     name: exam-backend
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/hxf_exam?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    # allowPublicKeyRetrieval=true：MySQL 8 默认 caching_sha2_password 认证，
+    # 在 useSSL=false 时必须允许驱动向服务器索取 RSA 公钥，否则报 Public Key Retrieval is not allowed
+    url: jdbc:mysql://localhost:3306/hxf_exam?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: mcC7f8auBg9ALs6Bdwq66ANsarGjqejC
 
